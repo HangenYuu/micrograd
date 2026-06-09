@@ -10,13 +10,14 @@ def _():
     import matplotlib.pyplot as plt
     from graphviz import Digraph
     import marimo as mo
+    import math
 
-    return Digraph, mo, np, plt
+    return Digraph, math, mo, np, plt
 
 
 @app.function
 def func(x):
-    return 3*x**2 - 4*x + 5
+    return 3 * x**2 - 4 * x + 5
 
 
 @app.cell
@@ -48,27 +49,34 @@ def _(mo):
     return
 
 
-@app.class_definition
-class Value:
-    def __init__(self, data, label="", _children=(), _op=""):
-        self.data = data
-        self.label = label
-        self.grad = 0.0
-        self._prev = set(_children)
-        self._op = _op
+@app.cell
+def _(math):
+    class Value:
+        def __init__(self, data, label="", _children=(), _op=""):
+            self.data = data
+            self.label = label
+            self.grad = 0.0
+            self._prev = set(_children)
+            self._op = _op
 
-    def __repr__(self):
-        return f"Value(data={self.data})"
+        def __repr__(self):
+            return f"Value(data={self.data})"
 
-    def __add__(self, other):
-        return Value(self.data + other.data, _children=(self, other), _op="+")
+        def __add__(self, other):
+            return Value(self.data + other.data, _children=(self, other), _op="+")
 
-    def __mul__(self, other):
-        return Value(self.data * other.data, _children=(self, other), _op="*")
+        def __mul__(self, other):
+            return Value(self.data * other.data, _children=(self, other), _op="*")
+
+        def tanh(self):
+            t = math.tanh(self.data)
+            return Value(t, _children=(self,), _op="tanh")
+
+    return (Value,)
 
 
 @app.cell
-def _():
+def _(Value):
     a = Value(2.0, "a")
     b = Value(-3.0, "b")
     c = Value(10.0, "c")
@@ -79,6 +87,15 @@ def _():
     d.label = "d"
     f = Value(-2.0, "f")
     L = d * f
+    L.label = "L"
+
+    L.grad = 1.0
+    f.grad = d.data
+    d.grad = f.data
+    c.grad = f.data
+    e.grad = f.data
+    a.grad = f.data * b.data
+    b.grad = f.data * a.data
     return L, a, b, c
 
 
@@ -87,9 +104,9 @@ def _(a, b, c):
     h = 1e-5
     d_plus = (a.data + h) * b.data + c.data
     d_minus = (a.data - h) * b.data + c.data
-    grad_a_numerical = (d_plus - d_minus) / (2*h)
+    grad_a_numerical = (d_plus - d_minus) / (2 * h)
     print(f"Numerical ∂d/∂a: {grad_a_numerical:.6f}")  # -3.000000
-    print(f"Analytical ∂d/∂a: {b.data:.6f}")                 # -3.000000
+    print(f"Analytical ∂d/∂a: {b.data:.6f}")  # -3.000000
     return
 
 
@@ -97,22 +114,29 @@ def _(a, b, c):
 def _(Digraph):
     def trace(root):
         nodes, edges = set(), set()
+
         def build(v):
             if v not in nodes:
                 nodes.add(v)
                 for child in v._prev:
                     edges.add((child, v))
                     build(child)
+
         build(root)
         return nodes, edges
 
+
     def draw_dot(root):
-        dot = Digraph(format='svg', graph_attr={'rankdir': 'LR'})
+        dot = Digraph(format="svg", graph_attr={"rankdir": "LR"})
         nodes, edges = trace(root)
         for n in nodes:
             uid = str(id(n))
-            dot.node(name=uid, label="{ %s | data %.4f | grad %.4f }" % (
-                getattr(n, 'label', ''), n.data, n.grad), shape='record')
+            dot.node(
+                name=uid,
+                label="{ %s | data %.4f | grad %.4f }"
+                % (getattr(n, "label", ""), n.data, n.grad),
+                shape="record",
+            )
             if n._op:
                 dot.node(name=uid + n._op, label=n._op)
                 dot.edge(uid + n._op, uid)
@@ -126,6 +150,40 @@ def _(Digraph):
 @app.cell
 def _(L, draw_dot):
     draw_dot(L)
+    return
+
+
+@app.cell
+def _(Value):
+    def lol():
+        h = 1e-4
+
+        a = Value(2.0, "a")
+        b = Value(-3.0, "b")
+        c = Value(10.0, "c")
+        e = a * b
+        d = e + c
+        e.label = "e"
+        d.label = "d"
+        f = Value(-2.0, "f")
+        L = d * f
+        L1 = L.data
+
+        a = Value(2.0, "a")
+        b = Value(-3.0, "b")
+        c = Value(10.0, "c")
+        e = a * b
+        d = e + c
+        e.label = "e"
+        d.label = "d"
+        f = Value(-2.0, "f")
+        L = d * f
+        L2 = L.data
+
+        return (L2 - L1) / h
+
+
+    print(lol())
     return
 
 
