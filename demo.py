@@ -10,9 +10,8 @@ def _():
     import matplotlib.pyplot as plt
     from graphviz import Digraph
     import marimo as mo
-    import math
 
-    return Digraph, math, mo, np, plt
+    return Digraph, mo, np, plt
 
 
 @app.function
@@ -49,34 +48,34 @@ def _(mo):
     return
 
 
+@app.class_definition
+class Value:
+    E = 2.718281828459045
+    def __init__(self, data, label="", _children=(), _op=""):
+        self.data = data
+        self.label = label
+        self.grad = 0.0
+        self._backward = lambda: None
+        self._prev = set(_children)
+        self._op = _op
+
+    def __repr__(self):
+        return f"Value(data={self.data})"
+
+    def __add__(self, other):
+        return Value(self.data + other.data, _children=(self, other), _op="+")
+
+    def __mul__(self, other):
+        return Value(self.data * other.data, _children=(self, other), _op="*")
+
+    def tanh(self):
+        ez = self.E ** (2 * self.data)
+        t = (ez - 1) / (ez + 1)
+        return Value(t, _children=(self,), _op="tanh")
+
+
 @app.cell
-def _(math):
-    class Value:
-        def __init__(self, data, label="", _children=(), _op=""):
-            self.data = data
-            self.label = label
-            self.grad = 0.0
-            self._prev = set(_children)
-            self._op = _op
-
-        def __repr__(self):
-            return f"Value(data={self.data})"
-
-        def __add__(self, other):
-            return Value(self.data + other.data, _children=(self, other), _op="+")
-
-        def __mul__(self, other):
-            return Value(self.data * other.data, _children=(self, other), _op="*")
-
-        def tanh(self):
-            t = math.tanh(self.data)
-            return Value(t, _children=(self,), _op="tanh")
-
-    return (Value,)
-
-
-@app.cell
-def _(Value):
+def _():
     a = Value(2.0, "a")
     b = Value(-3.0, "b")
     c = Value(10.0, "c")
@@ -107,6 +106,40 @@ def _(a, b, c):
     grad_a_numerical = (d_plus - d_minus) / (2 * h)
     print(f"Numerical ∂d/∂a: {grad_a_numerical:.6f}")  # -3.000000
     print(f"Analytical ∂d/∂a: {b.data:.6f}")  # -3.000000
+    return
+
+
+@app.cell
+def _():
+    def lol():
+        h = 1e-4
+
+        a = Value(2.0, "a")
+        b = Value(-3.0, "b")
+        c = Value(10.0, "c")
+        e = a * b
+        d = e + c
+        e.label = "e"
+        d.label = "d"
+        f = Value(-2.0, "f")
+        L = d * f
+        L1 = L.data
+
+        a = Value(2.0, "a")
+        b = Value(-3.0, "b")
+        c = Value(10.0, "c")
+        e = a * b
+        d = e + c
+        e.label = "e"
+        d.label = "d"
+        f = Value(-2.0, "f")
+        L = d * f
+        L2 = L.data
+
+        return (L2 - L1) / h
+
+
+    print(lol())
     return
 
 
@@ -153,37 +186,46 @@ def _(L, draw_dot):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # A single neuron
+    """)
+    return
+
+
 @app.cell
-def _(Value):
-    def lol():
-        h = 1e-4
+def _(draw_dot):
+    def neuron():
+        # inputs x1, x2
+        x1 = Value(2.0, label="x1")
+        x2 = Value(0.1, label="x1")
 
-        a = Value(2.0, "a")
-        b = Value(-3.0, "b")
-        c = Value(10.0, "c")
-        e = a * b
-        d = e + c
-        e.label = "e"
-        d.label = "d"
-        f = Value(-2.0, "f")
-        L = d * f
-        L1 = L.data
+        # weights w1, w2
+        w1 = Value(-3.0, label="w1")
+        w2 = Value(1.1, label="w2")
 
-        a = Value(2.0, "a")
-        b = Value(-3.0, "b")
-        c = Value(10.0, "c")
-        e = a * b
-        d = e + c
-        e.label = "e"
-        d.label = "d"
-        f = Value(-2.0, "f")
-        L = d * f
-        L2 = L.data
+        # bias
+        b = Value(7.0, label="b")
 
-        return (L2 - L1) / h
+        x1w1 = x1 * w1; x1w1.label = "x1w1"
+        x2w2 = x2 * w2; x2w2.label = "x2w2"
+        x1w1x2w2 = x1w1 + x2w2; x1w1x2w2.label = "x1w1x2w2"
+        n = x1w1x2w2 + b; n.label = "n"
+        o = n.tanh(); o.label = "o"
+        o.grad = 1
+        n.grad = 1 - o.data ** 2
+        x1w1x2w2.grad = n.grad
+        b.grad = n.grad
+        x1w1.grad = x1w1x2w2.grad
+        x2w2.grad = x1w1x2w2.grad
+        x1.grad = x1w1.grad * w1.data
+        w1.grad = x1w1.grad * x1.data
+        x2.grad = x2w2.grad * w2.data
+        w2.grad = x2w2.grad * x2.data
+        return o
 
-
-    print(lol())
+    draw_dot(neuron())
     return
 
 
