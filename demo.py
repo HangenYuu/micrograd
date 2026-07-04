@@ -63,15 +63,35 @@ class Value:
         return f"Value(data={self.data})"
 
     def __add__(self, other):
-        return Value(self.data + other.data, _children=(self, other), _op="+")
+        out = Value(self.data + other.data, _children=(self, other), _op="+")
+
+        def _backward():
+            self.grad = 1.0 * out.grad
+            other.grad = 1.0 * out.grad
+
+        out._backward = _backward
+        return out
 
     def __mul__(self, other):
-        return Value(self.data * other.data, _children=(self, other), _op="*")
+        out = Value(self.data * other.data, _children=(self, other), _op="*")
+
+        def _backward():
+            self.grad = other.data * out.grad
+            other.grad = self.data * out.grad
+
+        out._backward = _backward
+        return out
 
     def tanh(self):
         ez = self.E ** (2 * self.data)
         t = (ez - 1) / (ez + 1)
-        return Value(t, _children=(self,), _op="tanh")
+        out = Value(t, _children=(self,), _op="tanh")
+
+        def _backward():
+            self.grad = (1 - t**2) * out.grad
+
+        out._backward = _backward
+        return out
 
 
 @app.cell
@@ -199,7 +219,7 @@ def _(draw_dot):
     def neuron():
         # inputs x1, x2
         x1 = Value(2.0, label="x1")
-        x2 = Value(0.1, label="x1")
+        x2 = Value(0.0, label="x1")
 
         # weights w1, w2
         w1 = Value(-3.0, label="w1")
@@ -213,19 +233,30 @@ def _(draw_dot):
         x1w1x2w2 = x1w1 + x2w2; x1w1x2w2.label = "x1w1x2w2"
         n = x1w1x2w2 + b; n.label = "n"
         o = n.tanh(); o.label = "o"
-        o.grad = 1
-        n.grad = 1 - o.data ** 2
-        x1w1x2w2.grad = n.grad
-        b.grad = n.grad
-        x1w1.grad = x1w1x2w2.grad
-        x2w2.grad = x1w1x2w2.grad
-        x1.grad = x1w1.grad * w1.data
-        w1.grad = x1w1.grad * x1.data
-        x2.grad = x2w2.grad * w2.data
-        w2.grad = x2w2.grad * x2.data
+        o.grad = 1.0
+        o._backward()
+        n._backward()
+        x1w1x2w2._backward()
+        x1w1._backward()
+        x2w2._backward()
         return o
 
     draw_dot(neuron())
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Topological sorting
+
+    To ensure that backpropagation is correct, the chain of gradient backward operations needs to be correct. Doing so requires sorting the computation graph into a DAG. The algorithm to achieve this result is **topological sorting**.
+    """)
+    return
+
+
+@app.cell
+def _():
     return
 
 
